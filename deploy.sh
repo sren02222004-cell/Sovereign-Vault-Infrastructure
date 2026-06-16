@@ -3,7 +3,7 @@
 # ==========================================
 
 # 1. 環境の完全初期化（過去のゴミを消去し、最新の武器を正規ルートで調達）
-rm -rf .terraform .terraform.lock.hcl main.tf terraform*.zip ~/.terraform.d
+
 sudo yum install -y yum-utils
 sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo
 sudo yum install -y terraform
