@@ -1,28 +1,38 @@
-# Sovereign-Vault-Infrastructure
-```markdown
-## 🚀 Development Roadmap (Sovereign Vault)
-本プロジェクトは、実運用に向けたエンタープライズ要件を満たすため、段階的なフェーズでアジャイルに構築を進行しています。
+# Sovereign Vault Infrastructure (IaC)
 
-- [x] **Phase 1: コアストレージの構築 (Current)**
-  - S3 Object Lock (Compliance Mode) による10年間のデータ不変性の担保
-  - CloudTrailによるAPI監査ログの取得と専用バケットへの保管
-  - KMSキーによる暗号化とハードウェアMFAを前提としたIAM権限保護
-
-- [ ] **Phase 2: 実運用向けIaC最適化 (In Progress)**
-  - Terraform State (.tfstate) のS3 + DynamoDBによるセキュアなリモート管理・ロック機能の実装
-  - ライフサイクルルールによる、30日経過後のGlacierへの自動アーカイブ（コスト最適化）
-
-- [ ] **Phase 3: グローバル展開 (Planned)**
-  - USリージョン（us-east-1等）を含めたマルチリージョンへの拡張
-  - ディザスタリカバリ（DR）要件を満たすクロスリージョンレプリケーションの自動化
 ## 概要
-AWSとTerraformを用いた、法的証拠保全要件を満たす完全不変（Immutable）なセキュア・ストレージのIaC構築リポジトリです。
+本リポジトリは、エンタープライズにおける法的証拠保全要件（WORMモデル）を満たすため、AWSとTerraformを用いて構築された、完全不変（Immutable）かつ改ざん不可能なセキュア・ストレージのIaC（Infrastructure as Code）アーキテクチャです。
 
-## アーキテクチャの要点と設計意図
-- **絶対不変性の担保**: S3 Object Lock (COMPLIANCEモード) による10年間の削除・変更ロック。AWSのルート権限でも意図的なデータ破壊・変更が不可能な構成。
-- **暗号シュレッディング対策**: AWS KMSキーのローテーション有効化および、IAMポリシーによる意図的なキー削除（Disable/ScheduleKeyDeletion）の完全ブロック。
-- **証拠能力の担保**: AWS CloudTrailによるS3バケット内のデータイベントの完全追跡と、ログバケットへのセキュアな保管。
+ランサムウェア攻撃、内部犯行、および特権管理者のアカウント乗っ取りを想定した、ゼロトラスト思想に基づくデータ防衛ソリューションとして設計されています。
+
+## コア・セキュリティ・アーキテクチャ
+
+### 1. 絶対不変ストレージ (Immutable Storage by WORM)
+* **S3 Object Lock (COMPLIANCE Mode):** データの保存期間を3650日間（10年間）にハードコード。この設定は、AWSルートアカウント、およびAWSサポートチームであっても変更・削除・短縮は不可能です。
+* **暗号シュレッディング対策 (Anti-Crypto-Shredding):** KMSカスタマーマネージドキー（CMK）において、キーの無効化（`DisableKey`）および削除スケジューリング（`ScheduleKeyDeletion`）をIAMポリシーの明示的拒否（Deny）により完全ブロック。データの暗号鍵を破壊して実質的に読み取り不能にする攻撃を未然に防ぎます。
+
+### 2. データ完全性と防御ライン (Data Integrity & Perimeter Defense)
+* **TLS 1.2/1.3の強制:** プレーンなHTTP通信によるデータ転送をS3バケットポリシーで明示的に拒否。
+* **ポリシー改ざん防止:** バケットポリシー自体の削除・変更操作（`DeleteBucketPolicy` / `PutBucketPolicy`）を拒否し、設定のドリフト（乖離）やバックドアの作成を防止。
+* **デフォルト暗号化の強制:** 全てのオブジェクトに対し、AWS KMSを用いたサーバーサイド暗号化（SSE-KMS）を強制。
+
+### 3. 不可逆な監査ログ (Immutable Audit Trails)
+* **AWS CloudTrailによるデータ監視:** S3バケットに対するすべてのデータ操作（Read/Write/Deleteイベント）を、完全に独立したログ専用バケット（`log_bucket`）へリアルタイムに転送。
+* **ログファイル検証の有効化:** ログが転送後に改ざんされていないかを暗号学的に検証する機能を有効化（`enable_log_file_validation = true`）。
 
 ## 技術スタック
-- Terraform (>= 1.5.0)
-- AWS (S3, KMS, CloudTrail, IAM)
+* **IaC:** Terraform (>= 1.5.0)
+* **Cloud:** AWS (S3, KMS, CloudTrail, IAM)
+* **OS環境:** Amazon Linux 2023 (全自動デプロイスクリプト対応)
+
+## 🚀 開発ロードマップ (Development Roadmap)
+* [x] **Phase 1: コアストレージの構築 (Done)**
+  * S3 Object Lockによる10年間のデータ不変性の担保
+  * KMSキーによる暗号化と削除制限ポリシーの実装
+  * CloudTrailによるAPI監査ログの取得とログバケットへの隔離保護
+* [ ] **Phase 2: 実運用向けIaC最適化 (In Progress)**
+  * Terraform State (.tfstate) のS3 + DynamoDBによるセキュアなリモート管理およびステートロック機能の実装
+  * ライフサイクルルールによる、一定期間経過後のGlacier Flexible Retrievalへの自動移行（ストレージコストの最適化）
+* [ ] **Phase 3: グローバル・ディザスタリカバリ (Planned)**
+  * BCR（事業継続要件）を満たすための、クロスリージョン・レプリケーションの自動化
+  * USリージョンを含めたマルチリージョン暗号鍵（Multi-Region KMS Key）の本格運用
