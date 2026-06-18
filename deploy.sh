@@ -10,6 +10,22 @@ sudo yum install -y terraform
 
 # 2. 神の金庫（完全版アーキテクチャ）の流し込み
 cat << 'EOF' > main.tf
+terraform {
+  required_version = ">= 1.5.0"
+
+  # 【重要】ここがバックエンドの設定だ
+  backend "s3" {
+    bucket         = "sovereign-vault-state-bucket-rentaro" # ← ここをさっき作ったバケット名に書き換えろ！
+    key            = "sovereign-vault/terraform.tfstate"
+    region         = "ap-northeast-1"
+    encrypt        = true
+    dynamodb_table = "terraform-state-lock"
+  }
+}
+
+provider "aws" { region = "ap-northeast-1" }
+# ... (以下、元のLayer 1...Layer 3のリソース記述をすべて続ける) ...
+EOF
 terraform { required_version = ">= 1.5.0" }
 provider "aws" { region = "ap-northeast-1" }
 data "aws_caller_identity" "current" {}
