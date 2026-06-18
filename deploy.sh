@@ -1,17 +1,19 @@
 #!/bin/bash
-# Sovereign Vault - 納品用全自動デプロイスクリプト（完全版）
+# Sovereign Vault - 納品用全自動デプロイスクリプト
 
 # 1. 環境初期化
 sudo yum install -y yum-utils
 sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo
 sudo yum install -y terraform
 
-# 2. main.tf の生成（全リソースをEOFの中に収める）
+# 2. main.tf の生成（すべてのリソースを一つのEOF内に収める）
 cat << 'EOF' > main.tf
 terraform {
   required_version = ">= 1.5.0"
+
+  # S3バックエンド設定（※バケット名は実在するものと一致させること）
   backend "s3" {
-    bucket         = "sovereign-vault-state-bucket-rentaro"
+    bucket         = "sovereign-vault-state-bucket-rentaro" 
     key            = "sovereign-vault/terraform.tfstate"
     region         = "ap-northeast-1"
     encrypt        = true
@@ -22,10 +24,11 @@ terraform {
 provider "aws" { region = "ap-northeast-1" }
 data "aws_caller_identity" "current" {}
 
+# Layer 1: 暗号化基盤
 resource "aws_kms_key" "vault_key" {
-  description = "Sovereign Vault Master Key"
-  enable_key_rotation = true
-  multi_region = true
+  description             = "Sovereign Vault Master Key"
+  enable_key_rotation     = true
+  multi_region            = true
   deletion_window_in_days = 30
   policy = jsonencode({
     Version = "2012-10-17",
@@ -38,8 +41,9 @@ resource "aws_kms_key" "vault_key" {
 
 resource "random_id" "vault_id" { byte_length = 4 }
 
+# Layer 2: 10年ロックの絶対金庫本体
 resource "aws_s3_bucket" "primary" {
-  bucket = "sovereign-vault-tokyo-${random_id.vault_id.hex}"
+  bucket              = "sovereign-vault-tokyo-${random_id.vault_id.hex}"
   object_lock_enabled = true
 }
 
@@ -54,10 +58,10 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "primary_sse" {
 }
 
 resource "aws_s3_bucket_public_access_block" "primary_block" {
-  bucket = aws_s3_bucket.primary.id
-  block_public_acls = true
-  block_public_policy = true
-  ignore_public_acls = true
+  bucket                  = aws_s3_bucket.primary.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
   restrict_public_buckets = true
 }
 
@@ -77,18 +81,19 @@ resource "aws_s3_bucket_policy" "primary_bucket_policy" {
   })
 }
 
+# Layer 3: 監視カメラ（CloudTrail）とログ保管庫
 resource "aws_s3_bucket" "log_bucket" {
   bucket = "sovereign-vault-logs-${random_id.vault_id.hex}"
 }
 
 resource "aws_cloudtrail" "vault_trail" {
-  name = "sovereign-vault-trail-${random_id.vault_id.hex}"
-  s3_bucket_name = aws_s3_bucket.log_bucket.id
+  name                          = "sovereign-vault-trail-${random_id.vault_id.hex}"
+  s3_bucket_name                = aws_s3_bucket.log_bucket.id
   include_global_service_events = true
-  is_multi_region_trail = true
-  enable_log_file_validation = true
+  is_multi_region_trail         = true
+  enable_log_file_validation    = true
   event_selector {
-    read_write_type = "All"
+    read_write_type           = "All"
     include_management_events = true
     data_resource { type = "AWS::S3::Object"; values = ["${aws_s3_bucket.primary.arn}/"] }
   }
