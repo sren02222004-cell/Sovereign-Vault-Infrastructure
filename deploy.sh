@@ -1,21 +1,21 @@
+#!/bin/bash
 # ==========================================
 # Sovereign Vault - 納品用全自動デプロイスクリプト
 # ==========================================
 
-# 1. 環境の完全初期化（過去のゴミを消去し、最新の武器を正規ルートで調達）
-
+# 1. 環境の初期化
 sudo yum install -y yum-utils
 sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo
 sudo yum install -y terraform
 
-# 2. 神の金庫（完全版アーキテクチャ）の流し込み
+# 2. main.tf の生成（全リソースを包含する）
 cat << 'EOF' > main.tf
 terraform {
   required_version = ">= 1.5.0"
 
-  # 【重要】ここがバックエンドの設定だ
+  # S3バックエンド設定（※バケット名は実在するものと一致させること）
   backend "s3" {
-    bucket         = "sovereign-vault-state-bucket-rentaro" # ← ここをさっき作ったバケット名に書き換えろ！
+    bucket         = "sovereign-vault-state-bucket-rentaro" 
     key            = "sovereign-vault/terraform.tfstate"
     region         = "ap-northeast-1"
     encrypt        = true
@@ -24,13 +24,9 @@ terraform {
 }
 
 provider "aws" { region = "ap-northeast-1" }
-# ... (以下、元のLayer 1...Layer 3のリソース記述をすべて続ける) ...
-EOF
-terraform { required_version = ">= 1.5.0" }
-provider "aws" { region = "ap-northeast-1" }
 data "aws_caller_identity" "current" {}
 
-# Layer 1: 暗号化基盤（削除禁止特約付き）
+# Layer 1: 暗号化基盤
 resource "aws_kms_key" "vault_key" {
   description             = "Sovereign Vault Master Key"
   enable_key_rotation     = true
@@ -92,24 +88,12 @@ resource "aws_s3_bucket" "log_bucket" {
   bucket = "sovereign-vault-logs-${random_id.vault_id.hex}"
 }
 
-resource "aws_s3_bucket_policy" "log_bucket_policy" {
-  bucket = aws_s3_bucket.log_bucket.id
-  policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
-      { Sid = "AWSCloudTrailAclCheck", Effect = "Allow", Principal = { Service = "cloudtrail.amazonaws.com" }, Action = "s3:GetBucketAcl", Resource = aws_s3_bucket.log_bucket.arn, Condition = { StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.current.account_id } } },
-      { Sid = "AWSCloudTrailWrite", Effect = "Allow", Principal = { Service = "cloudtrail.amazonaws.com" }, Action = "s3:PutObject", Resource = "${aws_s3_bucket.log_bucket.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*", Condition = { StringEquals = { "s3:x-amz-acl" = "bucket-owner-full-control", "aws:SourceAccount" = data.aws_caller_identity.current.account_id } } }
-    ]
-  })
-}
-
 resource "aws_cloudtrail" "vault_trail" {
   name                          = "sovereign-vault-trail-${random_id.vault_id.hex}"
   s3_bucket_name                = aws_s3_bucket.log_bucket.id
   include_global_service_events = true
   is_multi_region_trail         = true
   enable_log_file_validation    = true
-  depends_on                    = [aws_s3_bucket_policy.log_bucket_policy]
   event_selector {
     read_write_type           = "All"
     include_management_events = true
@@ -118,6 +102,6 @@ resource "aws_cloudtrail" "vault_trail" {
 }
 EOF
 
-# 3. 着火（デプロイ）
+# 3. 着火
 terraform init
 terraform apply -auto-approve
