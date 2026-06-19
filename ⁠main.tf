@@ -1,4 +1,4 @@
-cat << 'EOF' > main.tf
+cat
 terraform {
   required_version = ">= 1.5.0"
   backend "s3" {
@@ -109,7 +109,4 @@ resource "aws_cloudtrail" "vault_trail" {
     }
   }
 }
-EOF
 
-terraform init
-terraform apply -auto-approve
